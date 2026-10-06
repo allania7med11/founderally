@@ -41,3 +41,40 @@ flowchart TB
   wa --> tavily[Tavily search] & web[(web pages)]
   wb & wc & wi --> openai[OpenAI]
 ```
+
+## The run
+
+A conversation comes first, in the API: it answers questions about the idea, asks the few that improve the first
+run, names the regulation documents to bring, and proposes a brief. On Start, one Temporal workflow runs three
+agents: the researcher searches the web for competitors and the retriever searches the owner's documents, in
+parallel; the writer assembles both. Code, not a model, checks every row and quote and retries a thin result once.
+The only pause is the review: the workflow waits on a signal until the owner approves, discards or sends feedback.
+Feedback is a chat turn; code maps the changed fields to the agents that read them and reruns only those.
+
+```mermaid
+flowchart TB
+  user([owner]) <-->|reply| conv{conversation, in the API}
+  conv -->|Start, with the brief| A
+  conv -->|Start| bprep
+  subgraph wf [one Temporal workflow per run]
+    direction TB
+    subgraph par [in parallel]
+      direction LR
+      A[researcher: web search] --> rA[under 3 rows? retry once, more pages]
+      rA -->|retry| A
+      bprep[retriever: prepare] -->|one activity per category| bcat[retriever: one category each]
+      bcat --> rB[no source? retry once, more chunks]
+      rB -->|retry| bcat
+    end
+    rA --> C[writer]
+    rB --> C
+    C --> chk[checks: ids exist, every paragraph cites]
+    chk -->|failed checks, max 1| C
+    chk --> review[/review: wait on a signal/]
+    review -->|approve| save[(save)]
+    review -->|discard or cancel| x((End))
+  end
+  review -.->|feedback, a chat turn| conv
+  conv -.->|rerun only the agents the change touches, max 3| par
+  conv -.->|notes only| C
+```
