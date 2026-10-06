@@ -78,3 +78,22 @@ flowchart TB
   conv -.->|rerun only the agents the change touches, max 3| par
   conv -.->|notes only| C
 ```
+
+## Why Temporal, why LangGraph
+
+Two layers, each for what it is good at.
+
+**LangGraph gives the graph**: one schema per agent that every code check hangs on, the retriever run once per
+category at the same time in one line, and a named step per agent in the trace. Plain functions lost on those
+three; CrewAI and the OpenAI Agents SDK on the first.
+
+**Temporal gives the three durable things**: the review waits for days with no process alive; after a crash the run
+continues from the last finished step, on another worker, without repeating a paid call; a stop or a decision reaches
+the run as a signal whenever it arrives. Before Temporal these came from LangGraph's checkpointer plus Celery, a
+Redis key and a boot sweep we wrote ourselves. Temporal replaced three pieces of our code with one server. And it
+scales by machine: each agent is a worker on its own queue, so a slow step gets more workers, on one box with
+Compose today and as one Deployment per queue on Kubernetes later, with no change to the code.
+
+**What it costs**: workflow code must be deterministic, so every call to the world is an activity; every activity
+saves its rows under a key and returns ids, so a rerun reads back what is unchanged; the LangGraph plugin is in
+preview, so it is pinned and hand-written wrappers are the fallback.
