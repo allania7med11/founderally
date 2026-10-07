@@ -1,0 +1,64 @@
+# Local stack, the same containers as production; only the env file and the image build differ.
+# Values after :- are local defaults; production sets every variable in its env file.
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-founderally}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-founderally}
+      POSTGRES_DB: ${POSTGRES_DB:-founderally}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-founderally}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  temporal:
+    # Single-process server for v1; creates its own two databases on the shared Postgres.
+    image: temporalio/auto-setup:1.29.7
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-founderally}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-founderally}
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:2.55.0
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8080:8080"
+    depends_on:
+      - temporal
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://founderally:founderally@postgres:5432/founderally}
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+
+volumes:
+  postgres-data:
