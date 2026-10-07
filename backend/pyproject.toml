@@ -1,0 +1,27 @@
+[project]
+name = "founderally-backend"
+version = "0.1.0"
+description = "API and workers for FounderAlly"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.20",
+    "fastapi>=0.142",
+    "psycopg[binary]>=3.3",
+    "pydantic-settings>=2.15",
+    "python-json-logger>=4.2.0",
+    "sqlalchemy[asyncio]>=2.1",
+    "temporalio==1.34.0",
+    "uvicorn[standard]>=0.54",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]
