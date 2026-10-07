@@ -23,4 +23,6 @@ Whoever works here, a person or any coding agent: the owner decides, you draft, 
 - A draft goes into its file, not the terminal.
 - Give the command; do not run the app. Run only on "run" or "fix it".
 - Terse. Facts, not commentary. No duplication.
-- The owner runs git. A commit message is one line, plain words.
+- The owner runs git. One branch per ticket off `develop`, `feature/FA-N-<what it does>`; every commit message is one
+  line, plain words, prefixed `FA-N: `; the pull request goes to `develop` by rebase merge, never squash or merge
+  commit.
