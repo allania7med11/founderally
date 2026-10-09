@@ -97,3 +97,17 @@ Compose today and as one Deployment per queue on Kubernetes later, with no chang
 **What it costs**: workflow code must be deterministic, so every call to the world is an activity; every activity
 saves its rows under a key and returns ids, so a rerun reads back what is unchanged; the LangGraph plugin is in
 preview, so it is pinned and hand-written wrappers are the fallback.
+
+## How to run
+
+Docker and [uv](https://docs.astral.sh/uv/) installed, then from the repo root:
+
+```
+make up          # Postgres, Temporal, the API on :8000, the Temporal UI on :8080, one worker
+make migrate     # the tables
+make test        # fast tests, no stack needed
+make test-stack  # one run through the stack: start, review, worker restart, approve
+make down        # stop, and drop the database
+```
+
+Routes are under `/api`; the tenant is the `X-Tenant-Id` header until auth lands.
