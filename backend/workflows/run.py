@@ -13,8 +13,8 @@ from temporalio.common import RetryPolicy
 
 # One write to Postgres. Longer than this means the database is gone, not slow.
 RECORD_TIMEOUT = timedelta(seconds=10)
-# Postgres blinks, the second try lands; a third is the last before the run waits for a fix.
-RECORD_RETRY = RetryPolicy(maximum_attempts=3)
+# Postgres blinks, the second try lands; an outage keeps trying every 30 s until it is back, the run waits.
+RECORD_RETRY = RetryPolicy(maximum_interval=timedelta(seconds=30))
 
 TASK_QUEUE = "workflow"
 
