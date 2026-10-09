@@ -45,20 +45,31 @@ services:
       - temporal
 
   api:
-    build:
+    build: &backend-build
       context: .
       dockerfile: docker/backend/Dockerfile
-    environment:
+    environment: &backend-env
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://founderally:founderally@postgres:5432/founderally}
       TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
     ports:
       - "8000:8000"
-    depends_on:
+    depends_on: &backend-deps
       postgres:
         condition: service_healthy
       temporal:
         condition: service_started
+
+  worker:
+    # Same image as the API; hosts the workflow and the record activity on one task queue.
+    build: *backend-build
+    command: ["python", "-m", "worker.main"]
+    environment:
+      <<: *backend-env
+      QUEUE: ${QUEUE:-workflow}
+    depends_on: *backend-deps
+    # Temporal answers a few seconds after its container starts; a failed first connect restarts the worker.
+    restart: on-failure
 
 volumes:
   postgres-data:

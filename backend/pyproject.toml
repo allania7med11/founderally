@@ -25,3 +25,4 @@ dev = [
 pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["stack: needs the running stack: make up, make migrate"]

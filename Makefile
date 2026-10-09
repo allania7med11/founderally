@@ -1,7 +1,7 @@
 API_HEALTH = http://localhost:8000/api/health
 TEMPORAL_UI = http://localhost:8080
 
-.PHONY: up down test
+.PHONY: up migrate down test test-stack
 
 up:
 	docker compose up -d --build
@@ -11,8 +11,14 @@ up:
 	done
 	@echo "up: API on :8000, Temporal UI on :8080"
 
+migrate:
+	docker compose run --rm api alembic upgrade head
+
 down:
 	docker compose down --volumes
 
 test:
-	cd backend && uv run pytest
+	cd backend && uv run pytest -m "not stack"
+
+test-stack:
+	cd backend && uv run pytest -m stack
