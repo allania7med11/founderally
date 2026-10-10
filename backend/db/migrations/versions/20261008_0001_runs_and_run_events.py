@@ -19,6 +19,7 @@ def upgrade() -> None:
         sa.Column("thread_id", sa.Uuid(), nullable=False),
         sa.Column("brief_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.Text(), nullable=False),
+        sa.Column("last_seq", sa.Integer(), server_default="0", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
@@ -27,10 +28,12 @@ def upgrade() -> None:
         "run_events",
         sa.Column("run_id", sa.Uuid(), sa.ForeignKey("runs.run_id"), primary_key=True),
         sa.Column("seq", sa.Integer(), primary_key=True),
+        sa.Column("activity_id", sa.Text(), nullable=False),
         sa.Column("stage", sa.Text(), nullable=False),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.UniqueConstraint("run_id", "activity_id"),
     )
 
 
