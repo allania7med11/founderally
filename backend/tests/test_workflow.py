@@ -3,9 +3,11 @@
 import asyncio
 
 from temporalio import activity
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from tests.cat_cafe import BRIEF
 from workflows.run import TASK_QUEUE, RecordInput, RunInput, RunWorkflow
 
 
@@ -17,10 +19,10 @@ async def test_run_pauses_at_review_and_resumes_on_decide() -> None:
         writes.append(write)
         return len(writes)
 
-    async with await WorkflowEnvironment.start_time_skipping() as env:
+    async with await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter) as env:
         async with Worker(env.client, task_queue=TASK_QUEUE, workflows=[RunWorkflow], activities=[fake_record]):
             handle = await env.client.start_workflow(
-                RunWorkflow.run, RunInput(run_id="r1", tenant_id="t1"), id="r1", task_queue=TASK_QUEUE
+                RunWorkflow.run, RunInput(run_id="r1", tenant_id="t1", brief=BRIEF), id="r1", task_queue=TASK_QUEUE
             )
             while len(writes) < 2:
                 await asyncio.sleep(0.05)

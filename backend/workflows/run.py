@@ -11,6 +11,15 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+# Our pydantic models are deterministic; the sandbox reloads modules per run unless told to pass them through.
+# `annotated_types` is a workaround: pydantic loads it inside a function, the sandbox gets its own copy and the
+# field caps stop being enforced (temporalio/sdk-python issue 1897, fixed 2026-10-05, not yet released at 1.34.0).
+# Remove the line when the SDK is bumped past that fix.
+with workflow.unsafe.imports_passed_through():
+    import annotated_types  # noqa: F401
+
+    from contracts.brief import Brief
+
 # One write to Postgres. Longer than this means the database is gone, not slow.
 RECORD_TIMEOUT = timedelta(seconds=10)
 # Postgres blinks, the second try lands; an outage keeps trying every 30 s until it is back, the run waits.
@@ -23,6 +32,8 @@ TASK_QUEUE = "workflow"
 class RunInput:
     run_id: str
     tenant_id: str
+    # The confirmed brief, whole: the workflow hands it to the researcher; no activity reads the briefs table.
+    brief: Brief
 
 
 @dataclass

@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from db.engine import engine
 from db.models import Run
@@ -43,7 +44,9 @@ async def temporal(request: Request) -> Client:
     client = getattr(request.app.state, "temporal", None)
     if client is None:
         s = settings()
-        client = await Client.connect(s.temporal_address, namespace=s.temporal_namespace)
+        client = await Client.connect(
+            s.temporal_address, namespace=s.temporal_namespace, data_converter=pydantic_data_converter
+        )
         request.app.state.temporal = client
     return client
 
