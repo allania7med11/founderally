@@ -14,10 +14,20 @@ import pytest
 from httpx import AsyncClient, Limits
 from sqlalchemy import select
 from temporalio.client import Client, WorkflowExecutionStatus
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from db.engine import engine
-from db.models import AWAITING_REVIEW, QUEUED, RUNNING, SAVED, RunEvent
+from db.models import (
+    AWAITING_REVIEW,
+    CONFIRMED,
+    QUEUED,
+    RUNNING,
+    SAVED,
+    Brief,
+    RunEvent,
+)
 from settings import settings
+from tests.cat_cafe import BRIEF
 
 # A worker pick-up plus one write takes well under a second; a worker restart a few seconds. Longer means the
 # stack is not up.
@@ -51,7 +61,11 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
         headers={"X-Tenant-Id": str(tenant_id)},
         limits=Limits(max_keepalive_connections=0),
     )
-    temporal = await Client.connect(settings().temporal_address, namespace=settings().temporal_namespace)
+    temporal = await Client.connect(
+        settings().temporal_address, namespace=settings().temporal_namespace, data_converter=pydantic_data_converter
+    )
+    thread_id = uuid.uuid4()
+    start = {"thread_id": str(thread_id), "brief": BRIEF.model_dump()}
 
     async def status_is(run_id: uuid.UUID, status: str) -> bool:
         return (await api.get(f"/api/runs/{run_id}")).json()["status"] == status
@@ -64,10 +78,15 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
 
     # 1. Start: the row exists at once, then the first step lands. `running` lasts milliseconds here, with no
     # work in the step, so the first event is what the test waits for, not that status.
-    started = await api.post("/api/runs", json={"thread_id": str(uuid.uuid4()), "brief_id": str(uuid.uuid4())})
+    started = await api.post("/api/runs", json=start)
     assert started.status_code == 201
     run_id = uuid.UUID(started.json()["run_id"])
-    assert (await api.get(f"/api/runs/{run_id}")).json()["status"] in (QUEUED, RUNNING, AWAITING_REVIEW)
+    run = (await api.get(f"/api/runs/{run_id}")).json()
+    assert run["status"] in (QUEUED, RUNNING, AWAITING_REVIEW)
+    # The brief is a row of its own, confirmed, round 1, pointing at its run.
+    async with engine().connect() as conn:
+        brief = (await conn.execute(select(Brief).where(Brief.run_id == run_id))).one()
+    assert (brief.status, brief.round, brief.brief) == (CONFIRMED, 1, BRIEF.model_dump())
     await asyncio.wait_for(until(has_events, run_id, 1), timeout=STACK_TIMEOUT)
     assert (await events_of(run_id))[0] == (1, "start", "completed", "Run started")
     assert (await api.get(f"/api/runs/{run_id}")).json()["status"] in (RUNNING, AWAITING_REVIEW)
@@ -90,6 +109,8 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
 
     # 5. Decide again: refused, nothing changes.
     before = (await api.get(f"/api/runs/{run_id}")).json()
+    # `last_seq` is the GET's cursor for the page: three events saved, so three.
+    assert before["last_seq"] == 3
     assert (await api.post(f"/api/runs/{run_id}/decide", json={"decision": "discard"})).status_code == 409
     assert (await api.get(f"/api/runs/{run_id}")).json() == before
     assert len(await events_of(run_id)) == 3
@@ -102,7 +123,7 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     # API's back, as an operator would in the Temporal UI: the workflow is closed, no `record` ran, so our row still
     # says awaiting_review and the 409 check passes; Temporal then refuses the signal (its message says "already
     # completed" for any closed run) and the API lets it surface as a 500.
-    started = await api.post("/api/runs", json={"thread_id": str(uuid.uuid4()), "brief_id": str(uuid.uuid4())})
+    started = await api.post("/api/runs", json=start | {"thread_id": str(uuid.uuid4())})
     killed = uuid.UUID(started.json()["run_id"])
     await asyncio.wait_for(until(status_is, killed, AWAITING_REVIEW), timeout=STACK_TIMEOUT)
     await temporal.get_workflow_handle(str(killed)).terminate("killed by the test")

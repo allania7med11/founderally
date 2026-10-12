@@ -7,6 +7,7 @@ import signal
 from logging.config import dictConfig
 
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from activities.record import record
@@ -20,7 +21,9 @@ async def main() -> None:
     with open("logging.json") as f:
         dictConfig(json.load(f))
     s = settings()
-    client = await Client.connect(s.temporal_address, namespace=s.temporal_namespace)
+    client = await Client.connect(
+        s.temporal_address, namespace=s.temporal_namespace, data_converter=pydantic_data_converter
+    )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
