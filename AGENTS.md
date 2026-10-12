@@ -11,6 +11,8 @@ Read `README.md` first.
 - Before writing a helper, name the package or built-in that does it and use that; custom code only when nothing
   standard fits, with the reason in one line.
 - A test ships in the same commit as the code it tests.
+- A schema change is `make makemigrations m="..."` after `make up && make migrate`, then the generated file is read
+  and edited; never a hand-written migration. `make check-migrations` before a commit.
 
 ## Conduct
 
