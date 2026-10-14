@@ -1,4 +1,4 @@
-"""What one pass of the researcher decides, on the real tables with Tavily, the model and the web faked. Needs
+"""What one pass of the researcher decides, on the real tables with Tavily and the model faked. Needs
 Postgres (`make up`, `make migrate`), no keys, no Temporal."""
 
 import pytest
@@ -20,7 +20,7 @@ async def test_three_rows_survive_and_kitty_corner_is_dropped() -> None:
     Code keeps three, drops Kitty Corner."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     out = await ActivityEnvironment().run(researcher.run, first_pass)
@@ -41,7 +41,7 @@ async def test_two_invalid_model_answers_give_zero_rows_and_a_reason() -> None:
     up: nothing to check, so zero rows, and the reason says the model's answer was invalid."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[None, None])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     out = await ActivityEnvironment().run(researcher.run, first_pass)
@@ -56,7 +56,7 @@ async def test_valid_answer_with_no_competitor_has_no_reason() -> None:
     ask again, and the reason stays empty: unlike the invalid-answer case, nothing went wrong."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[Rows(rows=[])])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     out = await ActivityEnvironment().run(researcher.run, first_pass)
@@ -72,7 +72,7 @@ async def test_page_number_outside_the_pages_is_re_asked_once_then_dropped() -> 
     run_id, tenant_id = await new_run()
     row_on_page_42 = MODEL_ROWS.rows[0].model_copy(update={"page_no": 42})
     providers = FakeProviders(answers=[Rows(rows=[row_on_page_42]), Rows(rows=[row_on_page_42])])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     out = await ActivityEnvironment().run(researcher.run, first_pass)
@@ -82,24 +82,12 @@ async def test_page_number_outside_the_pages_is_re_asked_once_then_dropped() -> 
     assert out.reason == MODEL_ANSWER_INVALID
 
 
-async def test_a_page_cited_twice_is_fetched_once() -> None:
-    """The model's four rows cite pages 1, 2, 3 and 3. Code opens each cited page once: three fetches, not four."""
-    run_id, tenant_id = await new_run()
-    providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
-
-    await ActivityEnvironment().run(researcher.run, first_pass)
-
-    assert sorted(providers.fetched) == sorted([str(PAGES[0].url), str(PAGES[1].url), str(PAGES[2].url)])
-
-
 async def test_search_down_closes_the_pass_without_the_model() -> None:
     """Tavily is down after its retries. Code saves the pass with no pages and the reason, never calls the model, and
     a second call reads the closed pass back instead of searching again."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(search_down=True)
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     out = await ActivityEnvironment().run(researcher.run, first_pass)
@@ -115,7 +103,7 @@ async def test_pass_two_runs_with_twenty_four_pages() -> None:
     run_id, tenant_id = await new_run()
     thirty_pages = [Page(url=f"https://cafe{i}.example/", title=f"Café {i}", text=f"Café {i}") for i in range(30)]
     providers = FakeProviders(pages=thirty_pages)
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     second_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=2)
 
     await ActivityEnvironment().run(researcher.run, second_pass)
@@ -133,7 +121,7 @@ async def test_stored_pages_are_what_the_model_saw_after_the_cap() -> None:
     run_id, tenant_id = await new_run()
     too_long = "x" * (PAGE_TEXT_CHARS + 500)
     providers = FakeProviders(pages=[page.model_copy(update={"text": too_long}) for page in PAGES])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     await ActivityEnvironment().run(researcher.run, first_pass)

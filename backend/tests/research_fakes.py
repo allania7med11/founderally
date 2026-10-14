@@ -1,4 +1,4 @@
-"""Fake providers for the researcher's tests: Tavily, the model and the web, and readers for what a pass saved."""
+"""Fake providers for the researcher's tests: Tavily and the model, and readers for what a pass saved."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -14,8 +14,8 @@ from tests.cat_cafe import MODEL_ROWS, PAGES
 
 @dataclass
 class FakeProviders:
-    """Stands in for Tavily, the model and the web. A test sets what they return (`pages`, `answers`) and then reads
-    what our code sent them (the call counts, `max_results_asked`, `seen_by_model`, `fetched`).
+    """Stands in for Tavily and the model. A test sets what they return (`pages`, `answers`) and then reads what
+    our code sent them (the call counts, `max_results_asked`, `seen_by_model`).
 
     `answers` is what the model says, one per call; the last one repeats. None is no parsed answer (a refusal); an
     exception is raised."""
@@ -27,7 +27,6 @@ class FakeProviders:
     max_results_asked: list[int] = field(default_factory=list)
     model_calls: int = 0
     seen_by_model: list[ExtractInput] = field(default_factory=list)
-    fetched: list[str] = field(default_factory=list)
 
     async def search(self, query: str, max_results: int) -> list[Page]:
         self.search_calls += 1
@@ -47,13 +46,6 @@ class FakeProviders:
         if isinstance(answer, Exception):
             raise answer
         return Extracted(rows=answer, tokens_in=1000, tokens_out=100)
-
-    async def fetch(self, url: str) -> str | None:
-        self.fetched.append(url)
-        for page in self.pages:
-            if str(page.url) == url:
-                return page.text
-        return None
 
 
 async def new_run() -> tuple[str, str]:
