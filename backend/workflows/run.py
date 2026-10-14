@@ -37,6 +37,29 @@ class RunInput:
 
 
 @dataclass
+class ResearchInput:
+    """What the researcher needs for one pass: the brief and the key its rows are saved under."""
+
+    run_id: str
+    tenant_id: str
+    brief: Brief
+    round: int
+    pass_no: int
+
+
+@dataclass
+class ResearchOutput:
+    """What one pass hands back: the verified rows' ids and what the pass paid. A pass read back from the row
+    paid nothing in this attempt; its tokens are in LangSmith under the run id."""
+
+    competitor_ids: list[str]
+    rows_found: int
+    reason: str | None
+    tokens_in: int
+    tokens_out: int
+
+
+@dataclass
 class RecordInput:
     """What `record`, the one activity that writes about a run, needs for one write."""
 

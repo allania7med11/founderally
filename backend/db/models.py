@@ -37,7 +37,7 @@ CONFIRMED = "confirmed"
 
 # Why a research pass found nothing, when it did; null when it found something or is not done.
 SEARCH_UNAVAILABLE = "search_unavailable"
-MODEL_OUTPUT_UNUSABLE = "model_output_unusable"
+MODEL_ANSWER_INVALID = "model_answer_invalid"
 
 
 class Base(DeclarativeBase):
@@ -148,7 +148,7 @@ class ResearchPass(Base):
     verdicts: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # How many candidates survived; set last, so "set" means the pass is done.
     rows_found: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # SEARCH_UNAVAILABLE or MODEL_OUTPUT_UNUSABLE when the pass had nothing to check; null otherwise.
+    # SEARCH_UNAVAILABLE or MODEL_ANSWER_INVALID when the pass had nothing to check; null otherwise.
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
