@@ -48,10 +48,10 @@ class Rows(BaseModel):
 
 
 class Verdict(BaseModel):
-    """Why a candidate is or is not in `competitors`. Written by code after the page check, one per candidate."""
+    """Why a candidate is or is not in `competitors`. Written by code after the name check, one per candidate."""
 
     page_no: int
-    source_url: str | None
+    source_url: str
     name: str
     kept: bool
-    reason: Literal["page_no_out_of_range", "page_failed_to_load", "name_not_on_page"] | None
+    reason: Literal["name_not_on_page"] | None

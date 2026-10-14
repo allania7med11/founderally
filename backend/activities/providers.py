@@ -1,14 +1,13 @@
-"""The researcher's three providers, real: Tavily for pages, OpenAI for rows, httpx for the page check.
+"""The researcher's two providers, real: Tavily for pages, OpenAI for rows.
 
 Each is a class whose method has the shape `activities.research` expects, so a test replaces it with a fake. Timeouts,
-retries and backoff are the design's dependency table (§8): Tavily 20 s, two retries from 1 s; OpenAI 60 s, three
-retries honouring Retry-After, done by its client; a page fetch 10 s, no retry.
+retries and backoff: Tavily 20 s, two retries from 1 s; OpenAI 60 s, three retries honouring Retry-After, done by its
+client.
 """
 
 import asyncio
 
 import httpx
-from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 from tavily import AsyncTavilyClient
 from tavily.errors import UsageLimitExceededError
@@ -24,10 +23,7 @@ from contracts.researcher import ExtractInput, Page, Rows
 from settings import settings
 
 SEARCH_TIMEOUT = 20
-FETCH_TIMEOUT = 10
 MODEL_TIMEOUT = 60
-# A browser's name, so a site serves the page it serves a visitor.
-FETCH_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; FounderAlly/0.1; +https://founderally.app)"}
 
 
 class TavilySearch:
@@ -79,20 +75,6 @@ class OpenAIExtract:
         )
 
 
-class HttpFetch:
-    def __init__(self) -> None:
-        self.client = httpx.AsyncClient(timeout=FETCH_TIMEOUT, follow_redirects=True, headers=FETCH_HEADERS)
-
-    async def fetch(self, url: str) -> str | None:
-        try:
-            response = await self.client.get(url)
-        except httpx.HTTPError:
-            return None
-        if response.status_code != 200:
-            return None
-        return BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)
-
-
 def real_researcher():
     """The activity wired to the world. Fails at worker start when a key is missing, not at the first run."""
     from activities.research import Researcher
@@ -103,5 +85,4 @@ def real_researcher():
     return Researcher(
         search=TavilySearch(s.tavily_api_key).search,
         extract=OpenAIExtract(s.openai_api_key, s.openai_model).extract,
-        fetch=HttpFetch().fetch,
     )

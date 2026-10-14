@@ -20,7 +20,7 @@ async def test_second_call_reads_back_and_pays_nothing() -> None:
     second finds the pass done and only reads the saved ids back: no search, no model, no tokens."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
     same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
@@ -37,7 +37,7 @@ async def test_zero_rows_pass_also_reads_back() -> None:
     """A pass that ended with zero rows is done too: the second call reads it back and does not ask the model again."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[None, None])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
     same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
@@ -53,7 +53,7 @@ async def test_model_failure_then_retry_sees_the_same_pages_and_searches_once() 
     saved, skips the search, and the model reads exactly the same pages."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[RuntimeError("model: 500"), MODEL_ROWS])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
     same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
@@ -72,7 +72,7 @@ async def test_two_attempts_of_one_pass_write_one_set_of_competitors() -> None:
     write is "only if still empty", so one attempt saves and the other reads its result: three competitors, not six."""
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
-    researcher = Researcher(search=providers.search, extract=providers.extract, fetch=providers.fetch)
+    researcher = Researcher(search=providers.search, extract=providers.extract)
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
     same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 

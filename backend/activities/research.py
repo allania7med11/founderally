@@ -9,6 +9,8 @@ never paid for again. The statements themselves are in `db/passes.py`.
 """
 
 import asyncio
+import re
+import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -35,8 +37,6 @@ from workflows.run import ResearchInput, ResearchOutput
 
 # Pages in total, the first pass then the wider retry, shared evenly by the angles: 12 and 24 divide by 2, 3 and 4.
 PAGES_TOTAL = {1: 12, 2: 24}
-# Pages fetched at once in the verify step.
-FETCH_AT_ONCE = 6
 # The prompt is a versioned file; its tag goes to LangSmith as metadata of the model call.
 PROMPT_VERSION = "extract_v1"
 PROMPT = (Path(__file__).parent.parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
@@ -57,11 +57,9 @@ class Extracted:
     tokens_out: int
 
 
-# The three things the activity needs from outside (Tavily, the model, the web), each one callable so a test hands
-# in a fake.
+# The two things the activity needs from outside (Tavily, the model), each one callable so a test hands in a fake.
 Search = Callable[[str, int], Awaitable[list[Page]]]
 Extract = Callable[[ExtractInput, str, str | None], Awaitable[Extracted]]
-Fetch = Callable[[str], Awaitable[str | None]]
 
 
 def pass_state(row: PassRow | None) -> PassState:
@@ -78,10 +76,9 @@ def pass_state(row: PassRow | None) -> PassState:
 class Researcher:
     """The activity as a method, so the providers are given once at worker start and faked in tests."""
 
-    def __init__(self, search: Search, extract: Extract, fetch: Fetch) -> None:
+    def __init__(self, search: Search, extract: Extract) -> None:
         self.search = search
         self.extract = extract
-        self.fetch = fetch
 
     @activity.defn(name="research")
     async def run(self, input: ResearchInput) -> ResearchOutput:
@@ -113,7 +110,7 @@ class Researcher:
         if pass_state(row) == "candidates":
             pages = [Page.model_validate(p) for p in row.pages]
             candidates = [Row.model_validate(c) for c in row.candidates]
-            verdicts = await self._verify(pages, candidates)
+            verdicts = self._verify(pages, candidates)
             kept = [(c, v) for c, v in zip(candidates, verdicts) if v.kept]
             await close_pass(key, verdicts, kept)
             row = await read_pass(key)
@@ -168,32 +165,35 @@ class Researcher:
             return answer.rows.rows, tokens_in, tokens_out
         return None, tokens_in, tokens_out
 
-    async def _verify(self, pages: list[Page], candidates: list[Row]) -> list[Verdict]:
-        """Code opens each cited page itself, once per page: it loads and the name is on it, or the row is dropped."""
-        at_once = asyncio.Semaphore(FETCH_AT_ONCE)
-
-        async def load(url: str) -> str | None:
-            async with at_once:
-                return await self.fetch(url)
-
-        # Two candidates on one guide page share one fetch.
-        cited = list(dict.fromkeys(str(pages[c.page_no - 1].url) for c in candidates if 1 <= c.page_no <= len(pages)))
-        texts = dict(zip(cited, await asyncio.gather(*(load(url) for url in cited))))
-
-        def check(candidate: Row) -> Verdict:
-            if not 1 <= candidate.page_no <= len(pages):
-                url, reason = None, "page_no_out_of_range"
-            else:
-                url = str(pages[candidate.page_no - 1].url)
-                text = texts[url]
-                if text is None:
-                    reason = "page_failed_to_load"
-                elif candidate.name.casefold() not in text.casefold():
-                    reason = "name_not_on_page"
-                else:
-                    reason = None
-            return Verdict(
-                page_no=candidate.page_no, name=candidate.name, source_url=url, kept=reason is None, reason=reason
+    def _verify(self, pages: list[Page], candidates: list[Row]) -> list[Verdict]:
+        """Each candidate's name must be in the stored text of the page it cites, the text the model read: verify
+        checks the model, not the web, so no page is downloaded again. `_extract` already rejected a page outside
+        the pages."""
+        verdicts = []
+        for candidate in candidates:
+            page = pages[candidate.page_no - 1]
+            found = name_in_text(candidate.name, page.text)
+            verdicts.append(
+                Verdict(
+                    page_no=candidate.page_no,
+                    name=candidate.name,
+                    source_url=str(page.url),
+                    kept=found,
+                    reason=None if found else "name_not_on_page",
+                )
             )
+        return verdicts
 
-        return [check(c) for c in candidates]
+
+def plain(text: str) -> str:
+    """Lower case, accents removed: "Café" and "CAFE" both become "cafe"."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    without_accents = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return without_accents.casefold()
+
+
+def name_in_text(name: str, text: str) -> bool:
+    """Whole words only, case and accents ignored: "Chats Café" is in "CHATS CAFE, La Marsa"; "Chat" is not in
+    "Chats"."""
+    whole_name = r"(?<!\w)" + re.escape(plain(name)) + r"(?!\w)"
+    return re.search(whole_name, plain(text)) is not None
