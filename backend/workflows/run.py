@@ -76,8 +76,10 @@ class RunWorkflow:
 
     @workflow.signal
     def decide(self, decision: str) -> None:
-        """The owner's answer at the review: "approve" or "discard". The API checks it before sending."""
-        self.decision = decision
+        """The owner's answer at the review: "approve" or "discard". The first valid answer stands: a second tab
+        cannot flip it, and a typo sent from outside the API is ignored."""
+        if self.decision is None and decision in ("approve", "discard"):
+            self.decision = decision
 
     @workflow.run
     async def run(self, input: RunInput) -> str:
