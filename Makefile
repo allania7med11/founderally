@@ -33,4 +33,4 @@ check-migrations:
 
 # The stack test reads the researcher's keys from .env to know whether to skip; no other recipe gets them.
 test-stack: check-migrations
-	cd backend && uv run $(if $(wildcard .env),--env-file ../.env) pytest -m stack
+	cd backend && uv run $(if $(wildcard .env),--env-file ../.env) pytest -m stack -rP
