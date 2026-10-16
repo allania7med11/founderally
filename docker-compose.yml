@@ -61,15 +61,29 @@ services:
         condition: service_started
 
   worker:
-    # Same image as the API; hosts the workflow and the record activity on one task queue.
+    # Same image as the API; hosts the workflow and the record activity on queue `workflow`.
     build: *backend-build
     command: ["python", "-m", "worker.main"]
     environment:
       <<: *backend-env
-      QUEUE: ${QUEUE:-workflow}
+      QUEUE: workflow
     depends_on: *backend-deps
     # Temporal answers a few seconds after its container starts; a failed first connect restarts the worker.
     restart: on-failure
+
+  worker-a:
+    # Same image; runs A's three nodes on queue `a`, the only worker with the Tavily and OpenAI keys.
+    build: *backend-build
+    command: ["python", "-m", "worker.main"]
+    environment:
+      <<: *backend-env
+      QUEUE: a
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
+    depends_on: *backend-deps
+    # Five tries cover Temporal's slow start; a missing key fails every try, so it stops with the error in its logs.
+    restart: on-failure:5
 
 volumes:
   postgres-data:

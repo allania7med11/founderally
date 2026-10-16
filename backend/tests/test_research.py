@@ -2,14 +2,14 @@
 Postgres (`make up`, `make migrate`), no keys, no Temporal."""
 
 import pytest
-from temporalio.testing import ActivityEnvironment
-
 from activities.research import Researcher
+from activities.research_graph import build_research_graph
 from contracts.researcher import PAGE_TEXT_CHARS, Page, Rows
 from db.models import MODEL_ANSWER_INVALID, SEARCH_UNAVAILABLE
+from temporalio.testing import ActivityEnvironment
 from tests.cat_cafe import BRIEF, MODEL_ROWS, PAGES
 from tests.research_fakes import FakeProviders, competitors, new_run, pass_row
-from workflows.run import ResearchInput
+from workflows.run import ResearchState
 
 pytestmark = pytest.mark.stack
 
@@ -21,14 +21,15 @@ async def test_three_rows_survive_and_kitty_corner_is_dropped() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    out = await ActivityEnvironment().run(researcher.run, first_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, first_pass)
 
     saved = await competitors(run_id)
     assert [c.name for c in saved] == ["Chats Café", "Le Chat Noir", "Paws & Beans"]
     assert saved[0].source_url == "https://chatscafe.tn/"  # the URL comes from the cited page, never from the model
-    assert out.rows_found == 3
+    assert out["rows_found"] == 3
 
     verdicts = (await pass_row(run_id, round=1, pass_no=1)).verdicts
     kitty_corner = next(v for v in verdicts if v["name"] == "Kitty Corner")
@@ -42,13 +43,14 @@ async def test_two_invalid_model_answers_give_zero_rows_and_a_reason() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[None, None])
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    out = await ActivityEnvironment().run(researcher.run, first_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, first_pass)
 
     assert providers.model_calls == 2
-    assert out.rows_found == 0
-    assert out.reason == MODEL_ANSWER_INVALID
+    assert out["rows_found"] == 0
+    assert out["reason"] == MODEL_ANSWER_INVALID
 
 
 async def test_valid_answer_with_no_competitor_has_no_reason() -> None:
@@ -57,13 +59,14 @@ async def test_valid_answer_with_no_competitor_has_no_reason() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[Rows(rows=[])])
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    out = await ActivityEnvironment().run(researcher.run, first_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, first_pass)
 
     assert providers.model_calls == 1
-    assert out.rows_found == 0
-    assert out.reason is None
+    assert out["rows_found"] == 0
+    assert out["reason"] is None
 
 
 async def test_page_number_outside_the_pages_is_re_asked_once_then_dropped() -> None:
@@ -73,13 +76,14 @@ async def test_page_number_outside_the_pages_is_re_asked_once_then_dropped() -> 
     row_on_page_42 = MODEL_ROWS.rows[0].model_copy(update={"page_no": 42})
     providers = FakeProviders(answers=[Rows(rows=[row_on_page_42]), Rows(rows=[row_on_page_42])])
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    out = await ActivityEnvironment().run(researcher.run, first_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, first_pass)
 
     assert providers.model_calls == 2
-    assert out.rows_found == 0
-    assert out.reason == MODEL_ANSWER_INVALID
+    assert out["rows_found"] == 0
+    assert out["reason"] == MODEL_ANSWER_INVALID
 
 
 async def test_search_down_closes_the_pass_without_the_model() -> None:
@@ -88,12 +92,13 @@ async def test_search_down_closes_the_pass_without_the_model() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(search_down=True)
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    out = await ActivityEnvironment().run(researcher.run, first_pass)
-    await ActivityEnvironment().run(researcher.run, first_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, first_pass)
+    await ActivityEnvironment().run(research.ainvoke, first_pass)
 
-    assert out.reason == SEARCH_UNAVAILABLE
+    assert out["reason"] == SEARCH_UNAVAILABLE
     assert providers.model_calls == 0
     assert providers.search_calls == 2  # two angles, in the first call only
 
@@ -104,9 +109,10 @@ async def test_pass_two_runs_with_twenty_four_pages() -> None:
     thirty_pages = [Page(url=f"https://cafe{i}.example/", title=f"Café {i}", text=f"Café {i}") for i in range(30)]
     providers = FakeProviders(pages=thirty_pages)
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    second_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=2)
+    research = build_research_graph(researcher).compile()
+    second_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=2)
 
-    await ActivityEnvironment().run(researcher.run, second_pass)
+    await ActivityEnvironment().run(research.ainvoke, second_pass)
 
     # What our code asked search for: 24 pages split over the brief's two angles, "cat café" and
     # "pet-friendly café", 12 each.
@@ -122,9 +128,10 @@ async def test_stored_pages_are_what_the_model_saw_after_the_cap() -> None:
     too_long = "x" * (PAGE_TEXT_CHARS + 500)
     providers = FakeProviders(pages=[page.model_copy(update={"text": too_long}) for page in PAGES])
     researcher = Researcher(search=providers.search, extract=providers.extract)
-    first_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    research = build_research_graph(researcher).compile()
+    first_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    await ActivityEnvironment().run(researcher.run, first_pass)
+    await ActivityEnvironment().run(research.ainvoke, first_pass)
 
     stored = (await pass_row(run_id, round=1, pass_no=1)).pages
     seen = providers.seen_by_model[0].pages

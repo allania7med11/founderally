@@ -31,5 +31,6 @@ test:
 check-migrations:
 	docker compose run --rm --build api sh -c "alembic check && alembic downgrade -1 && alembic upgrade head && alembic check"
 
+# The stack test reads the researcher's keys from .env to know whether to skip; no other recipe gets them.
 test-stack: check-migrations
-	cd backend && uv run pytest -m stack
+	cd backend && uv run $(if $(wildcard .env),--env-file ../.env) pytest -m stack
