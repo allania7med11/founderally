@@ -106,3 +106,31 @@ async def test_too_few_rows_runs_a_second_pass() -> None:
             await handle.result()
 
     assert writes[2].text == "4 competitors verified"
+
+
+async def test_first_valid_decision_wins() -> None:
+    """A typo, then "approve", then "discard": the typo is ignored and "approve" stands, so the run is saved."""
+    writes: list[RecordInput] = []
+
+    @activity.defn(name="record")
+    async def fake_record(write: RecordInput) -> int:
+        writes.append(write)
+        return len(writes)
+
+    research_graph = fake_research_graph(three_rows)
+    research = LangGraphPlugin(graphs={RESEARCH_GRAPH: research_graph})
+    async with await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter) as env:  # noqa: SIM117
+        async with Worker(
+            env.client, task_queue=TASK_QUEUE, workflows=[RunWorkflow], activities=[fake_record], plugins=[research]
+        ):
+            handle = await env.client.start_workflow(
+                RunWorkflow.run, RunInput(run_id="r3", tenant_id="t1", brief=BRIEF), id="r3", task_queue=TASK_QUEUE
+            )
+            while len(writes) < 4:
+                await asyncio.sleep(0.05)
+            await handle.signal(RunWorkflow.decide, "aprove")
+            await handle.signal(RunWorkflow.decide, "approve")
+            await handle.signal(RunWorkflow.decide, "discard")
+            assert await handle.result() == "saved"
+
+    assert writes[4].run_status == "saved"
