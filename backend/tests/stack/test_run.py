@@ -132,6 +132,12 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     assert await status_is(run_id, AWAITING_REVIEW)
     assert await temporal_status(run_id) == WorkflowExecutionStatus.RUNNING
 
+    # Another tenant cannot decide it: 404, as if the run did not exist, and the run still waits for its owner.
+    stranger = {"X-Tenant-Id": str(uuid.uuid4())}
+    refused = await api.post(f"/api/runs/{run_id}/decide", json={"decision": "discard"}, headers=stranger)
+    assert refused.status_code == 404
+    assert await status_is(run_id, AWAITING_REVIEW)
+
     # 5. Decide: accepted now, saved shortly after, closed in Temporal.
     assert (await api.post(f"/api/runs/{run_id}/decide", json={"decision": "approve"})).status_code == 202
     await asyncio.wait_for(until(status_is, run_id, SAVED), timeout=STACK_TIMEOUT)
