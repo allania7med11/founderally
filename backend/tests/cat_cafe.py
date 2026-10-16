@@ -1,5 +1,5 @@
 """The one running case of every test: a cat café in Tunis, the brief its owner confirmed, the ten pages Tavily
-returns for it and the four rows the model reads out of them (design §5, the researcher's contract, filled)."""
+returns for it and the four rows the model reads out of them."""
 
 from contracts.brief import Brief
 from contracts.researcher import Page, Row, Rows

@@ -88,11 +88,11 @@ category at the same time in one line, and a named step per agent in the trace. 
 three; CrewAI and the OpenAI Agents SDK on the first.
 
 **Temporal gives the three durable things**: the review waits for days with no process alive; after a crash the run
-continues from the last finished step, on another worker, without repeating a paid call; a stop or a decision reaches
-the run as a signal whenever it arrives. Before Temporal these came from LangGraph's checkpointer plus Celery, a
-Redis key and a boot sweep we wrote ourselves. Temporal replaced three pieces of our code with one server. And it
-scales by machine: each agent is a worker on its own queue, so a slow step gets more workers, on one box with
-Compose today and as one Deployment per queue on Kubernetes later, with no change to the code.
+continues from the last finished step, on another worker, repeating at most the one paid call it was in; a stop or
+a decision reaches the run as a signal whenever it arrives. Before Temporal these came from LangGraph's checkpointer
+plus Celery, a Redis key and a boot sweep we wrote ourselves. Temporal replaced three pieces of our code with one
+server. And it scales by machine: each agent is a worker on its own queue, so a slow step gets more workers, on one
+box with Compose today and as one Deployment per queue on Kubernetes later, with no change to the code.
 
 **What it costs**: workflow code must be deterministic, so every call to the world is an activity; every activity
 saves its rows under a key and returns ids, so a rerun reads back what is unchanged; the LangGraph plugin is in
@@ -102,8 +102,9 @@ preview, so it is pinned and hand-written wrappers are the fallback.
 
 - A run starts from a confirmed brief, waits for days at the review, and survives a worker restart at any step.
 - The researcher searches the web from the brief's angles, reads the pages, and keeps only competitors whose name is
-  on the page it cites. Under three kept, it searches once more with more pages. A crash repeats only the step it
-  fell in: what a step paid for is saved before the next one starts.
+  on the page it cites, labelled a direct or indirect competitor. Under three kept, it searches once more with more
+  pages; still under three, the page says so, and why when there was nothing to check. A crash repeats only the
+  step it fell in: what a step paid for is saved before the next one starts.
 - The retriever, the writer and the conversation come next.
 
 ## How to run
@@ -116,7 +117,8 @@ keys, `TAVILY_API_KEY` ([Tavily](https://tavily.com)) and `OPENAI_API_KEY`; ever
 make up               # Postgres, Temporal, the API on :8000, the Temporal UI on :8080, two workers
 make migrate          # the tables
 make test             # fast tests, no stack, no keys
-make test-stack       # one real run: research, review, worker restarts, approve; skipped without the keys
+make test-stack       # Postgres tests with fake providers, then one real run: research, review, worker restarts,
+                      # approve; only the real run is skipped without the keys
 make down             # stop, and drop the database
 ```
 

@@ -89,7 +89,7 @@ class Run(Base):
     round: Mapped[int] = mapped_column(Integer, server_default="1")
     # 1 for the first try, 2 for the code retry inside a round. Column `pass`; `pass` is a Python keyword.
     pass_no: Mapped[int] = mapped_column("pass", Integer, server_default="1")
-    # What the run has spent so far, summed by `record` from what activities return.
+    # What the run has spent so far. Not written yet: 0 until cost tracking is built.
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), server_default="0")
     # The seq of the run's latest line, 0 before the first. `record` bumps it in the same statement that writes the
     # status; that update is also the lock that keeps two writers from taking the same seq.
@@ -142,7 +142,7 @@ class ResearchPass(Base):
     # see what it saw. Deferred: ten pages of text that no read-back needs until the model is called.
     pages: Mapped[list | None] = deferred(mapped_column(JSONB, nullable=True))
     # What the model answered, `Rows` as JSON, before any page check. The model, prompt and tokens of that call are
-    # in LangSmith under this run_id, not here.
+    # not stored yet.
     candidates: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # One per candidate: source_url, name, kept or dropped, reason. Why a row is or is not in `competitors`.
     verdicts: Mapped[list | None] = mapped_column(JSONB, nullable=True)

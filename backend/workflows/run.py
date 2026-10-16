@@ -69,6 +69,26 @@ class RecordInput:
     text: str
 
 
+# Why a pass had nothing to check, as the page says it.
+REASON_TEXT = {
+    "search_unavailable": "the web search was unavailable",
+    "model_answer_invalid": "the model's answer was invalid twice",
+}
+
+
+def research_text(found: ResearchState) -> str:
+    """The page's research line: the count when there are enough rows; a visible warning under three; and why, when
+    a pass had nothing to check."""
+    rows = found["rows_found"]
+    if rows >= MIN_ROWS:
+        return f"{rows} competitors verified"
+    text = f"only {rows} sourced competitors found"
+    reason = found.get("reason")
+    if reason:
+        text += f": {REASON_TEXT.get(reason, reason)}"
+    return text
+
+
 @workflow.defn(name="run")
 class RunWorkflow:
     def __init__(self) -> None:
@@ -97,9 +117,7 @@ class RunWorkflow:
                 run_id=input.run_id, tenant_id=input.tenant_id, brief=input.brief, round=1, pass_no=2
             )
             found = await research.ainvoke(second_pass)
-        await self._record(
-            input, "running", "research", "completed", f"{found['rows_found']} competitors verified"
-        )
+        await self._record(input, "running", "research", "completed", research_text(found))
 
         await self._record(input, "awaiting_review", "review", "started", "Awaiting your review")
         await workflow.wait_condition(lambda: self.decision is not None)

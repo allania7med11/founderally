@@ -55,8 +55,9 @@ async def start_run(
     body: StartRun, tenant: Tenant, temporal: Temporal
 ) -> dict[str, uuid.UUID]:
     """Rows first, the run as `queued` then its brief as confirmed round 1, then Temporal: the first `record` updates
-    the run row and fails the run if it is absent. Temporal down leaves the row `queued`, the state the word means
-    (default). The run id is the workflow id, and a second start with the same id is refused, never a second run."""
+    the run row and fails the run if it is absent. Temporal down leaves the row `queued`, the state the word means.
+    The run id is the workflow id, so a start sent again for the same run is refused, never a second workflow; each
+    request makes a new run id, so this does not stop a client that posts twice."""
     run_id = uuid.uuid4()
     brief_id = uuid.uuid4()
     async with engine().begin() as conn:

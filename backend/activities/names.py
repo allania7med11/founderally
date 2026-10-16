@@ -13,7 +13,9 @@ def plain(text: str) -> str:
 
 def name_in_text(name: str, text: str) -> bool:
     """Whole words only, case and accents ignored: "Chats Café" is in "CHATS CAFE, La Marsa"; "Chat" is not in
-    "Chats"."""
+    "Chats". A blank name is never on a page: an empty pattern would match anywhere."""
+    if not name.strip():
+        return False
     plain_name = re.escape(plain(name))
     whole_name = r"(?<!\w)" + plain_name + r"(?!\w)"
     plain_text = plain(text)

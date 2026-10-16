@@ -14,6 +14,7 @@ from activities.names import name_in_text
         ("Paws & Beans", "Paws & Beans, Lac 2. Pet-friendly terrace.", True),  # a symbol inside the name
         ("Chat", "Chats Café, La Marsa", False),  # whole words only: "Chat" is a part of "Chats"
         ("Kitty Corner", "Le Chat Noir on avenue Habib Bourguiba", False),
+        ("", "Chats Café, La Marsa. Open daily.", False),  # a blank name is never verified
     ],
 )
 def test_name_in_text(name, text, found) -> None:
