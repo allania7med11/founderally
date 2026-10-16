@@ -98,16 +98,26 @@ Compose today and as one Deployment per queue on Kubernetes later, with no chang
 saves its rows under a key and returns ids, so a rerun reads back what is unchanged; the LangGraph plugin is in
 preview, so it is pinned and hand-written wrappers are the fallback.
 
+## Built so far
+
+- A run starts from a confirmed brief, waits for days at the review, and survives a worker restart at any step.
+- The researcher searches the web from the brief's angles, reads the pages, and keeps only competitors whose name is
+  on the page it cites. Under three kept, it searches once more with more pages. A crash repeats only the step it
+  fell in: what a step paid for is saved before the next one starts.
+- The retriever, the writer and the conversation come next.
+
 ## How to run
 
-Docker and [uv](https://docs.astral.sh/uv/) installed, then from the repo root:
+Docker and [uv](https://docs.astral.sh/uv/) installed, and a `.env` file at the repo root with the researcher's two
+keys, `TAVILY_API_KEY` ([Tavily](https://tavily.com)) and `OPENAI_API_KEY`; every other setting has a local default
+(`.env.example` lists them all). Then from the repo root:
 
 ```
-make up          # Postgres, Temporal, the API on :8000, the Temporal UI on :8080, one worker
-make migrate     # the tables
-make test        # fast tests, no stack needed
-make test-stack  # one run through the stack: start, review, worker restart, approve
-make down        # stop, and drop the database
+make up               # Postgres, Temporal, the API on :8000, the Temporal UI on :8080, two workers
+make migrate          # the tables
+make test             # fast tests, no stack, no keys
+make test-stack       # one real run: research, review, worker restarts, approve; skipped without the keys
+make down             # stop, and drop the database
 ```
 
 Routes are under `/api`; the tenant is the `X-Tenant-Id` header until auth lands.
