@@ -1,26 +1,22 @@
-"""`research`, the activity that finds verified competitors for one pass: search, extract, verify, save.
+"""A, the researcher: three graph nodes, search, extract and verify, each run as its own activity, for one pass.
 
-The pass row (`research_passes`) fills forward as the work goes, each column set once by a conditional write.
-Temporal runs an activity at least once, and a retry after a missed heartbeat can start while the first attempt is
-still alive: neither can prove the other dead, so the row is the fence. Every attempt reads the row first and does
-only what is still null; the last write, `rows_found`, is the gate before `competitors`, so two attempts never
-insert the same rows twice. The search and the model are the paid calls; a row that already has their result is
-never paid for again. The statements themselves are in `db/passes.py`.
+The nodes share one row per pass (`research_passes`): search saves the pages, extract the candidates, verify the
+verdicts and `rows_found`. The row also keeps what the model read, for evals.
+
+Temporal runs each node at least once, and a retry after a missed heartbeat can start while the first attempt is
+still running. So each node is idempotent: it reads the row first and does only the steps still missing, and every
+write is conditional, applied only while its column is still null. Search and the model, the paid calls, are not
+repeated once their result is saved, and `competitors` are inserted only in the transaction that sets `rows_found`,
+so never twice. The SQL is in `db/passes.py`.
 """
 
 import asyncio
-import re
-import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from temporalio import activity
-from temporalio.exceptions import ApplicationError
-
-from activities.heartbeat import heartbeating
 from contracts.brief import Brief
 from contracts.researcher import PAGE_TEXT_CHARS, ExtractInput, Page, Row, Rows, Verdict
 from db.models import MODEL_ANSWER_INVALID, SEARCH_UNAVAILABLE
@@ -33,7 +29,12 @@ from db.passes import (
     read_pass,
     set_candidates,
 )
-from workflows.run import ResearchInput, ResearchOutput
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+from workflows.run import ResearchState
+
+from activities.heartbeat import heartbeating
+from activities.names import name_in_text
 
 # Pages in total, the first pass then the wider retry, shared evenly by the angles: 12 and 24 divide by 2, 3 and 4.
 PAGES_TOTAL = {1: 12, 2: 24}
@@ -57,7 +58,7 @@ class Extracted:
     tokens_out: int
 
 
-# The two things the activity needs from outside (Tavily, the model), each one callable so a test hands in a fake.
+# The two things the nodes need from outside (Tavily, the model), each one callable so a test hands in a fake.
 Search = Callable[[str, int], Awaitable[list[Page]]]
 Extract = Callable[[ExtractInput, str, str | None], Awaitable[Extracted]]
 
@@ -73,66 +74,81 @@ def pass_state(row: PassRow | None) -> PassState:
     return "pages"
 
 
+def pass_key(state: ResearchState) -> PassKey:
+    return PassKey(uuid.UUID(state["run_id"]), uuid.UUID(state["tenant_id"]), state["round"], state["pass_no"])
+
+
 class Researcher:
-    """The activity as a method, so the providers are given once at worker start and faked in tests."""
+    """The three nodes as methods, so the providers are given once at worker start and faked in tests. Each node
+    reads the pass row first and does its step only if the row says it is still to do."""
 
     def __init__(self, search: Search, extract: Extract) -> None:
         self.search = search
         self.extract = extract
 
-    @activity.defn(name="research")
-    async def run(self, input: ResearchInput) -> ResearchOutput:
-        if not input.brief.a_angles:
+    async def search_node(self, state: ResearchState) -> dict:
+        """Search, then insert the pass row with the pages."""
+        brief = Brief.model_validate(state["brief"])
+        if not brief.a_angles:
             raise ApplicationError("brief has no angles", non_retryable=True)
+        key = pass_key(state)
         async with heartbeating():
-            return await self._run(input)
+            if pass_state(await read_pass(key)) == "absent":
+                await self._search(brief, state["pass_no"], key)
+        return {}
 
-    async def _run(self, input: ResearchInput) -> ResearchOutput:
-        """The five steps, each entered only if the row says it is still to do."""
-        key = PassKey(uuid.UUID(input.run_id), uuid.UUID(input.tenant_id), input.round, input.pass_no)
+    async def extract_node(self, state: ResearchState) -> dict:
+        """Ask the model for rows from the saved pages, then save them as candidates."""
+        brief = Brief.model_validate(state["brief"])
+        key = pass_key(state)
         tokens_in = tokens_out = 0
-        row = await read_pass(key)
-        if pass_state(row) == "absent":
-            await self._search(input, key)
+        async with heartbeating():
             row = await read_pass(key)
-        if pass_state(row) == "pages":
-            pages = [Page.model_validate(p) for p in row.pages]
-            if pages:
-                candidates, tokens_in, tokens_out = await self._extract(input.brief, pages)
-                if candidates is None:
-                    await set_candidates(key, [], MODEL_ANSWER_INVALID)
+            if pass_state(row) == "pages":
+                pages = [Page.model_validate(p) for p in row.pages]
+                if pages:
+                    candidates, tokens_in, tokens_out = await self._extract(brief, pages)
+                    if candidates is None:
+                        await set_candidates(key, [], MODEL_ANSWER_INVALID)
+                    else:
+                        await set_candidates(key, candidates, None)
                 else:
-                    await set_candidates(key, candidates, None)
-            else:
-                # Search gave nothing: no model call, the pass closes with the search's reason.
-                await set_candidates(key, [], row.reason)
+                    # Search gave nothing: no model call, the pass closes with the search's reason.
+                    await set_candidates(key, [], row.reason)
+        return {"tokens_in": tokens_in, "tokens_out": tokens_out}
+
+    async def verify_node(self, state: ResearchState) -> dict:
+        """Check each candidate's name in its page, close the pass with the kept ones, hand back their ids."""
+        key = pass_key(state)
+        async with heartbeating():
             row = await read_pass(key)
-        if pass_state(row) == "candidates":
-            pages = [Page.model_validate(p) for p in row.pages]
-            candidates = [Row.model_validate(c) for c in row.candidates]
-            verdicts = self._verify(pages, candidates)
-            kept = [(c, v) for c, v in zip(candidates, verdicts) if v.kept]
-            await close_pass(key, verdicts, kept)
-            row = await read_pass(key)
-        ids = await competitor_ids(key)
+            if pass_state(row) == "candidates":
+                pages = [Page.model_validate(p) for p in row.pages]
+                candidates = [Row.model_validate(c) for c in row.candidates]
+                verdicts = self._verify(pages, candidates)
+                kept = [(c, v) for c, v in zip(candidates, verdicts) if v.kept]
+                await close_pass(key, verdicts, kept)
+                row = await read_pass(key)
+            ids = await competitor_ids(key)
         activity.logger.info(
             "research pass done",
-            extra={"run_id": input.run_id, "round": input.round, "pass": input.pass_no, "rows_found": row.rows_found},
+            extra={
+                "run_id": state["run_id"],
+                "round": state["round"],
+                "pass": state["pass_no"],
+                "rows_found": row.rows_found,
+            },
         )
-        return ResearchOutput(ids, row.rows_found, row.reason, tokens_in, tokens_out)
+        return {"competitor_ids": ids, "rows_found": row.rows_found, "reason": row.reason}
 
-    async def _search(self, input: ResearchInput, key: PassKey) -> None:
+    async def _search(self, brief: Brief, pass_no: int, key: PassKey) -> None:
         """One search per angle, the place appended, each angle an even share of the total; the unique URLs in angle
         order; the row inserted with them. Search still down after its retries: zero pages and the reason, the model is
         never called."""
-        share = PAGES_TOTAL[input.pass_no] // len(input.brief.a_angles)
+        share = PAGES_TOTAL[pass_no] // len(brief.a_angles)
+        searches = [self.search(f"{angle} {brief.place}", share) for angle in brief.a_angles]
         try:
-            per_angle = await asyncio.gather(
-                *(
-                    self.search(f"{angle} {input.brief.place}", share)
-                    for angle in input.brief.a_angles
-                )
-            )
+            per_angle = await asyncio.gather(*searches)
         except SearchUnavailable:
             await insert_pass(key, [], SEARCH_UNAVAILABLE)
             return
@@ -140,7 +156,7 @@ class Researcher:
         seen: set[str] = set()
         for found in per_angle:
             for page in found:
-                if str(page.url) not in seen and len(pages) < PAGES_TOTAL[input.pass_no]:
+                if str(page.url) not in seen and len(pages) < PAGES_TOTAL[pass_no]:
                     seen.add(str(page.url))
                     pages.append(Page(url=page.url, title=page.title, text=page.text[:PAGE_TEXT_CHARS]))
         await insert_pass(key, pages, None)
@@ -184,16 +200,3 @@ class Researcher:
             )
         return verdicts
 
-
-def plain(text: str) -> str:
-    """Lower case, accents removed: "Café" and "CAFE" both become "cafe"."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    without_accents = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return without_accents.casefold()
-
-
-def name_in_text(name: str, text: str) -> bool:
-    """Whole words only, case and accents ignored: "Chats Café" is in "CHATS CAFE, La Marsa"; "Chat" is not in
-    "Chats"."""
-    whole_name = r"(?<!\w)" + re.escape(plain(name)) + r"(?!\w)"
-    return re.search(whole_name, plain(text)) is not None

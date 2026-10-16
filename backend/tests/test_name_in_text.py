@@ -2,7 +2,7 @@
 
 import pytest
 
-from activities.research import name_in_text
+from activities.names import name_in_text
 
 
 @pytest.mark.parametrize(

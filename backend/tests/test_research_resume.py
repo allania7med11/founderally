@@ -4,13 +4,13 @@ first one saved. Needs Postgres (`make up`, `make migrate`), no keys, no Tempora
 import asyncio
 
 import pytest
-from temporalio.testing import ActivityEnvironment
-
 from activities.research import Researcher
+from activities.research_graph import build_research_graph
 from db.models import MODEL_ANSWER_INVALID
+from temporalio.testing import ActivityEnvironment
 from tests.cat_cafe import BRIEF, MODEL_ROWS, PAGES
 from tests.research_fakes import FakeProviders, competitors, new_run
-from workflows.run import ResearchInput
+from workflows.run import ResearchState
 
 pytestmark = pytest.mark.stack
 
@@ -21,16 +21,17 @@ async def test_second_call_reads_back_and_pays_nothing() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
     researcher = Researcher(search=providers.search, extract=providers.extract)
+    research = build_research_graph(researcher).compile()
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
-    same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    same_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    first = await ActivityEnvironment().run(researcher.run, same_pass)
-    second = await ActivityEnvironment().run(researcher.run, same_pass)
+    first = await ActivityEnvironment().run(research.ainvoke, same_pass)
+    second = await ActivityEnvironment().run(research.ainvoke, same_pass)
 
     assert providers.search_calls == 2  # two angles, in the first call only
     assert providers.model_calls == 1
-    assert second.competitor_ids == first.competitor_ids
-    assert second.tokens_in == 0
+    assert second["competitor_ids"] == first["competitor_ids"]
+    assert second["tokens_in"] == 0
 
 
 async def test_zero_rows_pass_also_reads_back() -> None:
@@ -38,14 +39,15 @@ async def test_zero_rows_pass_also_reads_back() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(answers=[None, None])
     researcher = Researcher(search=providers.search, extract=providers.extract)
+    research = build_research_graph(researcher).compile()
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
-    same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    same_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
-    await ActivityEnvironment().run(researcher.run, same_pass)
-    again = await ActivityEnvironment().run(researcher.run, same_pass)
+    await ActivityEnvironment().run(research.ainvoke, same_pass)
+    again = await ActivityEnvironment().run(research.ainvoke, same_pass)
 
     assert providers.model_calls == 2  # both in the first call
-    assert again.reason == MODEL_ANSWER_INVALID
+    assert again["reason"] == MODEL_ANSWER_INVALID
 
 
 async def test_model_failure_then_retry_sees_the_same_pages_and_searches_once() -> None:
@@ -54,17 +56,18 @@ async def test_model_failure_then_retry_sees_the_same_pages_and_searches_once() 
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[RuntimeError("model: 500"), MODEL_ROWS])
     researcher = Researcher(search=providers.search, extract=providers.extract)
+    research = build_research_graph(researcher).compile()
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
-    same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    same_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     with pytest.raises(RuntimeError):
-        await ActivityEnvironment().run(researcher.run, same_pass)
-    out = await ActivityEnvironment().run(researcher.run, same_pass)
+        await ActivityEnvironment().run(research.ainvoke, same_pass)
+    out = await ActivityEnvironment().run(research.ainvoke, same_pass)
 
     # Two searches, one per angle, in the first attempt only; the retry reads the stored pages.
     assert providers.search_calls == 2
     assert providers.seen_by_model[0].pages == providers.seen_by_model[1].pages
-    assert out.rows_found == 3
+    assert out["rows_found"] == 3
 
 
 async def test_two_attempts_of_one_pass_write_one_set_of_competitors() -> None:
@@ -73,13 +76,14 @@ async def test_two_attempts_of_one_pass_write_one_set_of_competitors() -> None:
     run_id, tenant_id = await new_run()
     providers = FakeProviders(pages=PAGES, answers=[MODEL_ROWS])
     researcher = Researcher(search=providers.search, extract=providers.extract)
+    research = build_research_graph(researcher).compile()
     # One input for both calls: same run, round and pass, so the second call is the same step run again.
-    same_pass = ResearchInput(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
+    same_pass = ResearchState(run_id=run_id, tenant_id=tenant_id, brief=BRIEF, round=1, pass_no=1)
 
     first, second = await asyncio.gather(
-        ActivityEnvironment().run(researcher.run, same_pass),
-        ActivityEnvironment().run(researcher.run, same_pass),
+        ActivityEnvironment().run(research.ainvoke, same_pass),
+        ActivityEnvironment().run(research.ainvoke, same_pass),
     )
 
-    assert first.competitor_ids == second.competitor_ids
+    assert first["competitor_ids"] == second["competitor_ids"]
     assert len(await competitors(run_id)) == 3

@@ -7,9 +7,11 @@ needs arrives as input or comes back from an activity.
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import NotRequired, TypedDict
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.contrib.langgraph import graph
 
 # Our pydantic models are deterministic; the sandbox reloads modules per run unless told to pass them through.
 # `annotated_types` is a workaround: pydantic loads it inside a function, the sandbox gets its own copy and the
@@ -17,7 +19,6 @@ from temporalio.common import RetryPolicy
 # Remove the line when the SDK is bumped past that fix.
 with workflow.unsafe.imports_passed_through():
     import annotated_types  # noqa: F401
-
     from contracts.brief import Brief
 
 # One write to Postgres. Longer than this means the database is gone, not slow.
@@ -26,6 +27,10 @@ RECORD_TIMEOUT = timedelta(seconds=10)
 RECORD_RETRY = RetryPolicy(maximum_interval=timedelta(seconds=30))
 
 TASK_QUEUE = "workflow"
+# The name the research graph is registered under on every worker; the workflow asks for it by name.
+RESEARCH_GRAPH = "research"
+# Fewer kept rows than this after pass 1: one wider pass.
+MIN_ROWS = 3
 
 
 @dataclass
@@ -36,27 +41,20 @@ class RunInput:
     brief: Brief
 
 
-@dataclass
-class ResearchInput:
-    """What the researcher needs for one pass: the brief and the key its rows are saved under."""
+class ResearchState(TypedDict):
+    """The research graph's state for one pass: its key and brief go in, what the pass found comes out. It crosses
+    each activity boundary as JSON, so a node receives the brief as a dict and validates it."""
 
     run_id: str
     tenant_id: str
     brief: Brief
     round: int
     pass_no: int
-
-
-@dataclass
-class ResearchOutput:
-    """What one pass hands back: the verified rows' ids and what the pass paid. A pass read back from the row
-    paid nothing in this attempt; its tokens are in LangSmith under the run id."""
-
-    competitor_ids: list[str]
-    rows_found: int
-    reason: str | None
-    tokens_in: int
-    tokens_out: int
+    tokens_in: NotRequired[int]
+    tokens_out: NotRequired[int]
+    competitor_ids: NotRequired[list[str]]
+    rows_found: NotRequired[int]
+    reason: NotRequired[str | None]
 
 
 @dataclass
@@ -84,6 +82,23 @@ class RunWorkflow:
     @workflow.run
     async def run(self, input: RunInput) -> str:
         await self._record(input, "running", "start", "completed", "Run started")
+
+        # A: the research graph, search -> extract -> verify; each node is an activity that worker-a runs.
+        research = graph(RESEARCH_GRAPH).compile()
+        await self._record(input, "running", "research", "started", "Researching")
+        first_pass = ResearchState(
+            run_id=input.run_id, tenant_id=input.tenant_id, brief=input.brief, round=1, pass_no=1
+        )
+        found = await research.ainvoke(first_pass)
+        if found["rows_found"] < MIN_ROWS:
+            second_pass = ResearchState(
+                run_id=input.run_id, tenant_id=input.tenant_id, brief=input.brief, round=1, pass_no=2
+            )
+            found = await research.ainvoke(second_pass)
+        await self._record(
+            input, "running", "research", "completed", f"{found['rows_found']} competitors verified"
+        )
+
         await self._record(input, "awaiting_review", "review", "started", "Awaiting your review")
         await workflow.wait_condition(lambda: self.decision is not None)
         status = "saved" if self.decision == "approve" else "discarded"
@@ -91,9 +106,10 @@ class RunWorkflow:
         return status
 
     async def _record(self, input: RunInput, run_status: str, stage: str, stage_status: str, text: str) -> int:
+        record = RecordInput(input.run_id, input.tenant_id, run_status, stage, stage_status, text)
         return await workflow.execute_activity(
             "record",
-            RecordInput(input.run_id, input.tenant_id, run_status, stage, stage_status, text),
+            record,
             start_to_close_timeout=RECORD_TIMEOUT,
             retry_policy=RECORD_RETRY,
         )
