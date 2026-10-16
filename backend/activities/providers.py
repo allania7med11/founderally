@@ -8,7 +8,10 @@ client.
 import asyncio
 
 import httpx
+from contracts.researcher import ExtractInput, Page, Rows
 from openai import AsyncOpenAI
+from pydantic import ValidationError
+from settings import settings
 from tavily import AsyncTavilyClient
 from tavily.errors import UsageLimitExceededError
 from tenacity import (
@@ -19,8 +22,6 @@ from tenacity import (
 )
 
 from activities.research import Extracted, SearchUnavailable
-from contracts.researcher import ExtractInput, Page, Rows
-from settings import settings
 
 SEARCH_TIMEOUT = 20
 MODEL_TIMEOUT = 60
@@ -67,7 +68,14 @@ class OpenAIExtract:
         user = f"Idea: {input.idea}\nPlace: {input.place}\n\n{pages}"
         if error:
             user += f"\n\nYour previous answer was rejected: {error}. Answer again."
-        answer = await self.client.responses.parse(model=self.model, instructions=prompt, input=user, text_format=Rows)
+        try:
+            answer = await self.client.responses.parse(
+                model=self.model, instructions=prompt, input=user, text_format=Rows
+            )
+        except ValidationError:
+            # A cut-off or broken answer, already paid: an invalid answer, never a retry of the node, which would pay
+            # again on every try. The tokens are lost with the answer.
+            return Extracted(rows=None, tokens_in=0, tokens_out=0)
         return Extracted(
             rows=answer.output_parsed,
             tokens_in=answer.usage.input_tokens if answer.usage else 0,

@@ -4,6 +4,7 @@ status writes, in order, the pause at review, and the second pass when the first
 import asyncio
 from datetime import timedelta
 
+import pytest
 from langgraph.graph import END, START, StateGraph
 from temporalio import activity
 from temporalio.contrib.langgraph import LangGraphPlugin
@@ -18,6 +19,7 @@ from workflows.run import (
     ResearchState,
     RunInput,
     RunWorkflow,
+    research_text,
 )
 
 
@@ -134,3 +136,21 @@ async def test_first_valid_decision_wins() -> None:
             assert await handle.result() == "saved"
 
     assert writes[4].run_status == "saved"
+
+
+@pytest.mark.parametrize(
+    ("rows_found", "reason", "text"),
+    [
+        (3, None, "3 competitors verified"),
+        (2, None, "only 2 sourced competitors found"),
+        (0, "search_unavailable", "only 0 sourced competitors found: the web search was unavailable"),
+        (0, "model_answer_invalid", "only 0 sourced competitors found: the model's answer was invalid twice"),
+    ],
+)
+def test_research_line(rows_found, reason, text) -> None:
+    """Three rows or more: the count. Under three, after the second pass: the warning, and why when there was
+    nothing to check."""
+    found = ResearchState(
+        run_id="r", tenant_id="t", brief=BRIEF, round=1, pass_no=2, rows_found=rows_found, reason=reason
+    )
+    assert research_text(found) == text

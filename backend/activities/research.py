@@ -38,7 +38,7 @@ from activities.names import name_in_text
 
 # Pages in total, the first pass then the wider retry, shared evenly by the angles: 12 and 24 divide by 2, 3 and 4.
 PAGES_TOTAL = {1: 12, 2: 24}
-# The prompt is a versioned file; its tag goes to LangSmith as metadata of the model call.
+# The prompt is a versioned file, so its name says what the model read. Not yet stored with each call.
 PROMPT_VERSION = "extract_v1"
 PROMPT = (Path(__file__).parent.parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
 

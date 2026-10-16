@@ -109,10 +109,11 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     events = await events_of(run_id)
     assert events[1] == (2, "research", "started", "Researching")
     assert events[2][:3] == (3, "research", "completed")
-    verified = re.fullmatch(r"(\d+) competitors verified", events[2][3])
-    assert verified is not None
+    # "5 competitors verified", or under three "only 2 sourced competitors found": the number is the rows kept.
+    kept = re.search(r"\d+", events[2][3])
+    assert kept is not None
     # Cat cafés in Tunis exist: zero means search, extract or verify is broken, not that the market is empty.
-    assert int(verified[1]) >= 1
+    assert int(kept[0]) >= 1
     # For the pull request: the final result, the rows of the last pass.
     async with engine().connect() as conn:
         query = select(Competitor.pass_no, Competitor.name, Competitor.source_url).where(Competitor.run_id == run_id)
