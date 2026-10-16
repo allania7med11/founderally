@@ -1,7 +1,7 @@
 """One run through the real stack, as the page would drive it: `make up`, `make migrate`, then this.
 
-The steps of the ticket: start, research, reach the review, survive a worker restart, decide, decide again;
-then one refusal from Temporal that must not read as "down".
+The steps of the ticket: start, research through a worker-a restart, reach the review, survive a workflow worker
+restart, decide, decide again; then one refusal from Temporal that must not read as "down".
 The API is the one under test on :8000; the workers are the compose containers. Research is real: worker-a calls
 Tavily and OpenAI, so the test needs both keys in `.env` and skips without them.
 """
@@ -21,6 +21,7 @@ from db.models import (
     RUNNING,
     SAVED,
     Brief,
+    Competitor,
     RunEvent,
 )
 from httpx import AsyncClient, Limits
@@ -79,8 +80,8 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     async def status_is(run_id: uuid.UUID, status: str) -> bool:
         return (await api.get(f"/api/runs/{run_id}")).json()["status"] == status
 
-    async def has_events(run_id: uuid.UUID, n: int) -> bool:
-        return len(await events_of(run_id)) >= n
+    async def has_step(run_id: uuid.UUID, stage: str, status: str) -> bool:
+        return any(e[1:3] == (stage, status) for e in await events_of(run_id))
 
     async def temporal_status(run_id: uuid.UUID) -> WorkflowExecutionStatus:
         return (await temporal.get_workflow_handle(str(run_id)).describe()).status
@@ -95,12 +96,16 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     async with engine().connect() as conn:
         brief = (await conn.execute(select(Brief).where(Brief.run_id == run_id))).one()
     assert (brief.status, brief.round, brief.brief) == (CONFIRMED, 1, BRIEF.model_dump())
-    await asyncio.wait_for(until(has_events, run_id, 1), timeout=STACK_TIMEOUT)
+    await asyncio.wait_for(until(has_step, run_id, "start", "completed"), timeout=STACK_TIMEOUT)
     assert (await events_of(run_id))[0] == (1, "start", "completed", "Run started")
     assert (await api.get(f"/api/runs/{run_id}")).json()["status"] in (RUNNING, AWAITING_REVIEW)
 
     # 2. Research: worker-a searches, extracts and verifies, then the run says how many competitors it kept.
-    await asyncio.wait_for(until(has_events, run_id, 3), timeout=RESEARCH_TIMEOUT)
+    # Worker-a restarts once research has started: the node it was running is retried, and the run still finishes.
+    await asyncio.wait_for(until(has_step, run_id, "research", "started"), timeout=STACK_TIMEOUT)
+    restart_a = await asyncio.create_subprocess_exec("docker", "compose", "restart", "worker-a", cwd=REPO)
+    assert await restart_a.wait() == 0
+    await asyncio.wait_for(until(has_step, run_id, "research", "completed"), timeout=RESEARCH_TIMEOUT)
     events = await events_of(run_id)
     assert events[1] == (2, "research", "started", "Researching")
     assert events[2][:3] == (3, "research", "completed")
@@ -108,6 +113,14 @@ async def test_run_pauses_at_review_survives_a_restart_and_resumes_on_decide() -
     assert verified is not None
     # Cat cafés in Tunis exist: zero means search, extract or verify is broken, not that the market is empty.
     assert int(verified[1]) >= 1
+    # For the pull request: the final result, the rows of the last pass.
+    async with engine().connect() as conn:
+        query = select(Competitor.pass_no, Competitor.name, Competitor.source_url).where(Competitor.run_id == run_id)
+        rows = (await conn.execute(query)).all()
+    last_pass = max(pass_no for pass_no, _, _ in rows)
+    for pass_no, name, source_url in rows:
+        if pass_no == last_pass:
+            print(f"verified: {name}  {source_url}")
 
     # 3. The review: the run stops and says so.
     await asyncio.wait_for(until(status_is, run_id, AWAITING_REVIEW), timeout=STACK_TIMEOUT)
