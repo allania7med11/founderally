@@ -23,7 +23,19 @@ dependencies = [
 dev = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
+    "ruff>=0.17.1",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, async mistakes, breakpoint() and pdb left in
+select = ["E", "F", "W", "I", "ASYNC", "T10"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["activities", "api", "contracts", "db", "settings", "tests", "worker", "workflows"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
