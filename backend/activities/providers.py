@@ -62,9 +62,7 @@ class OpenAIExtract:
         self.model = model
 
     async def extract(self, input: ExtractInput, prompt: str, error: str | None) -> Extracted:
-        pages = "\n\n".join(
-            f"Page {i}: {p.title} ({p.url})\n{p.text}" for i, p in enumerate(input.pages, start=1)
-        )
+        pages = "\n\n".join(f"Page {i}: {p.title} ({p.url})\n{p.text}" for i, p in enumerate(input.pages, start=1))
         user = f"Idea: {input.idea}\nPlace: {input.place}\n\n{pages}"
         if error:
             user += f"\n\nYour previous answer was rejected: {error}. Answer again."

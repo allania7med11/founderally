@@ -51,9 +51,7 @@ class RunOut(BaseModel):
 
 
 @router.post("", status_code=201)
-async def start_run(
-    body: StartRun, tenant: Tenant, temporal: Temporal
-) -> dict[str, uuid.UUID]:
+async def start_run(body: StartRun, tenant: Tenant, temporal: Temporal) -> dict[str, uuid.UUID]:
     """Rows first, the run as `queued` then its brief as confirmed round 1, then Temporal: the first `record` updates
     the run row and fails the run if it is absent. Temporal down leaves the row `queued`, the state the word means.
     The run id is the workflow id, so a start sent again for the same run is refused, never a second workflow; each
@@ -61,11 +59,7 @@ async def start_run(
     run_id = uuid.uuid4()
     brief_id = uuid.uuid4()
     async with engine().begin() as conn:
-        await conn.execute(
-            insert(Run).values(
-                run_id=run_id, tenant_id=tenant, thread_id=body.thread_id, status=QUEUED
-            )
-        )
+        await conn.execute(insert(Run).values(run_id=run_id, tenant_id=tenant, thread_id=body.thread_id, status=QUEUED))
         await conn.execute(
             insert(BriefRow).values(
                 brief_id=brief_id,
@@ -96,9 +90,7 @@ async def decide(body: Decision, run: OwnedRun, temporal: Temporal) -> Response:
     if run.status != AWAITING_REVIEW:
         raise HTTPException(409, f"run is {run.status}, not {AWAITING_REVIEW}")
     try:
-        await temporal.get_workflow_handle(str(run.run_id)).signal(
-            RunWorkflow.decide, body.decision
-        )
+        await temporal.get_workflow_handle(str(run.run_id)).signal(RunWorkflow.decide, body.decision)
     except RPCError as e:
         raise unavailable(e) from None
     return Response(status_code=202)
