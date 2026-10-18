@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# a new push to the same branch or pull request cancels the run still going
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: make lint
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # the same values as tests/conftest.py; alembic reads them through settings() outside pytest
+    env:
+      DATABASE_URL: postgresql+psycopg://founderally:founderally@localhost:5432/founderally
+      TEMPORAL_ADDRESS: localhost:7233
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      # installs the lock as it is, fails if it is stale; Python comes from backend/.python-version
+      - run: uv sync --locked
+      - run: docker compose up -d --wait postgres
+        working-directory: .
+      # models and migrations agree
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
+      # the stack test needs Temporal, the workers and the keys: local only
+      - run: uv run pytest --ignore=tests/stack -rs

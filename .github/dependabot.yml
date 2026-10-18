@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # keeps the action versions in .github/workflows current, one pull request per action
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: develop
