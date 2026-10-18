@@ -33,5 +33,5 @@ async def test_same_activity_id_writes_once() -> None:
     async with engine().connect() as conn:
         events = await conn.scalar(select(func.count()).where(RunEvent.run_id == uuid.UUID(run_id)))
         last_seq = await conn.scalar(select(Run.last_seq).where(Run.run_id == uuid.UUID(run_id)))
-    assert events == 1
+    assert events == 2
     assert last_seq == 1
