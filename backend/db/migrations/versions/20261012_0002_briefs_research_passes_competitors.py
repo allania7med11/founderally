@@ -8,8 +8,8 @@ round, so the key sits on the briefs side and `runs.brief_id` (0001, a bare uuid
 Skeleton data only; a database with 0001 rows is reset with `make down` before `make migrate`.
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0002'

@@ -8,10 +8,8 @@ client.
 import asyncio
 
 import httpx
-from contracts.researcher import ExtractInput, Page, Rows
 from openai import AsyncOpenAI
 from pydantic import ValidationError
-from settings import settings
 from tavily import AsyncTavilyClient
 from tavily.errors import UsageLimitExceededError
 from tenacity import (
@@ -22,6 +20,8 @@ from tenacity import (
 )
 
 from activities.research import Extracted, SearchUnavailable
+from contracts.researcher import ExtractInput, Page, Rows
+from settings import settings
 
 SEARCH_TIMEOUT = 20
 MODEL_TIMEOUT = 60

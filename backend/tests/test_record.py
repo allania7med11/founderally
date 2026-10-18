@@ -4,11 +4,12 @@ Needs Postgres (`make up`, `make migrate`), no Temporal."""
 import uuid
 
 import pytest
+from sqlalchemy import func, select
+from temporalio.testing import ActivityEnvironment
+
 from activities.record import record
 from db.engine import engine
 from db.models import Run, RunEvent
-from sqlalchemy import func, select
-from temporalio.testing import ActivityEnvironment
 from tests.research_fakes import new_run
 from workflows.run import RecordInput
 

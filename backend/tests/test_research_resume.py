@@ -4,10 +4,11 @@ first one saved. Needs Postgres (`make up`, `make migrate`), no keys, no Tempora
 import asyncio
 
 import pytest
+from temporalio.testing import ActivityEnvironment
+
 from activities.research import Researcher
 from activities.research_graph import build_research_graph
 from db.models import MODEL_ANSWER_INVALID
-from temporalio.testing import ActivityEnvironment
 from tests.cat_cafe import BRIEF, MODEL_ROWS, PAGES
 from tests.research_fakes import FakeProviders, competitors, new_run
 from workflows.run import ResearchState

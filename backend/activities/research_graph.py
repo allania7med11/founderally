@@ -5,9 +5,9 @@ from datetime import timedelta
 
 from langgraph.graph import END, START, StateGraph
 from temporalio.common import RetryPolicy
-from workflows.run import ResearchState
 
 from activities.research import Researcher
+from workflows.run import ResearchState
 
 QUEUE = "a"
 # Three missed heartbeats (one every 10 s) fail the attempt, and a worker on the queue retries it at once.

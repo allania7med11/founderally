@@ -8,16 +8,17 @@ import logging
 import signal
 from logging.config import dictConfig
 
+from temporalio.client import Client
+from temporalio.contrib.langgraph import LangGraphPlugin
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.worker import Worker
+
 from activities.providers import real_researcher
 from activities.record import record
 from activities.research import Researcher
 from activities.research_graph import QUEUE as RESEARCH_QUEUE
 from activities.research_graph import build_research_graph
 from settings import settings
-from temporalio.client import Client
-from temporalio.contrib.langgraph import LangGraphPlugin
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.worker import Worker
 from workflows.run import RESEARCH_GRAPH, TASK_QUEUE, RunWorkflow
 
 log = logging.getLogger("worker")

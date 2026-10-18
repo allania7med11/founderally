@@ -2,11 +2,12 @@
 Postgres (`make up`, `make migrate`), no keys, no Temporal."""
 
 import pytest
+from temporalio.testing import ActivityEnvironment
+
 from activities.research import Researcher
 from activities.research_graph import build_research_graph
 from contracts.researcher import PAGE_TEXT_CHARS, Page, Rows
 from db.models import MODEL_ANSWER_INVALID, SEARCH_UNAVAILABLE
-from temporalio.testing import ActivityEnvironment
 from tests.cat_cafe import BRIEF, MODEL_ROWS, PAGES
 from tests.research_fakes import FakeProviders, competitors, new_run, pass_row
 from workflows.run import ResearchState
