@@ -199,4 +199,3 @@ class Researcher:
                 )
             )
         return verdicts
-

@@ -71,9 +71,7 @@ class Brief(Base):
     status: Mapped[str] = mapped_column(Text)
     # The five fields of `contracts.brief.Brief`, as sent.
     brief: Mapped[dict] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Run(Base):
@@ -94,21 +92,15 @@ class Run(Base):
     # The seq of the run's latest line, 0 before the first. `record` bumps it in the same statement that writes the
     # status; that update is also the lock that keeps two writers from taking the same seq.
     last_seq: Mapped[int] = mapped_column(Integer, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RunEvent(Base):
     __tablename__ = "run_events"
     __table_args__ = (UniqueConstraint("run_id", "activity_id"),)
 
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("runs.run_id"), primary_key=True
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.run_id"), primary_key=True)
     # The order rows were saved, `runs.last_seq` after its bump; a reconnecting page sends the last seq it has to
     # get only what it missed.
     seq: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -120,9 +112,7 @@ class RunEvent(Base):
     stage: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ResearchPass(Base):
@@ -132,9 +122,7 @@ class ResearchPass(Base):
 
     __tablename__ = "research_passes"
 
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("runs.run_id"), primary_key=True
-    )
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.run_id"), primary_key=True)
     round: Mapped[int] = mapped_column(Integer, primary_key=True)
     pass_no: Mapped[int] = mapped_column("pass", Integer, primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(index=True)
@@ -150,9 +138,7 @@ class ResearchPass(Base):
     rows_found: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # SEARCH_UNAVAILABLE or MODEL_ANSWER_INVALID when the pass had nothing to check; null otherwise.
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Competitor(Base):
@@ -172,6 +158,4 @@ class Competitor(Base):
     channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_url: Mapped[str] = mapped_column(Text)
     kind: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
