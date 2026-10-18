@@ -17,6 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from activities.heartbeat import heartbeating
+from activities.names import name_in_text
 from contracts.brief import Brief
 from contracts.researcher import PAGE_TEXT_CHARS, ExtractInput, Page, Row, Rows, Verdict
 from db.models import MODEL_ANSWER_INVALID, SEARCH_UNAVAILABLE
@@ -29,12 +34,7 @@ from db.passes import (
     read_pass,
     set_candidates,
 )
-from temporalio import activity
-from temporalio.exceptions import ApplicationError
 from workflows.run import ResearchState
-
-from activities.heartbeat import heartbeating
-from activities.names import name_in_text
 
 # Pages in total, the first pass then the wider retry, shared evenly by the angles: 12 and 24 divide by 2, 3 and 4.
 PAGES_TOTAL = {1: 12, 2: 24}

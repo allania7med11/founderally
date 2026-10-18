@@ -7,9 +7,9 @@ Logging is set by logging.json, passed to uvicorn with --log-config.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from settings import settings
 
 from api.runs import router as runs
+from settings import settings
 
 
 @asynccontextmanager

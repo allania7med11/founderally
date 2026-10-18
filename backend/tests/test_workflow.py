@@ -11,6 +11,7 @@ from temporalio.contrib.langgraph import LangGraphPlugin
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
+
 from tests.cat_cafe import BRIEF
 from workflows.run import (
     RESEARCH_GRAPH,

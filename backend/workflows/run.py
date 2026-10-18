@@ -19,6 +19,7 @@ from temporalio.contrib.langgraph import graph
 # Remove the line when the SDK is bumped past that fix.
 with workflow.unsafe.imports_passed_through():
     import annotated_types  # noqa: F401
+
     from contracts.brief import Brief
 
 # One write to Postgres. Longer than this means the database is gone, not slow.

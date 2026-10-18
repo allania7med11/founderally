@@ -13,6 +13,11 @@ import uuid
 from pathlib import Path
 
 import pytest
+from httpx import AsyncClient, Limits
+from sqlalchemy import select
+from temporalio.client import Client, WorkflowExecutionStatus
+from temporalio.contrib.pydantic import pydantic_data_converter
+
 from db.engine import engine
 from db.models import (
     AWAITING_REVIEW,
@@ -24,11 +29,7 @@ from db.models import (
     Competitor,
     RunEvent,
 )
-from httpx import AsyncClient, Limits
 from settings import settings
-from sqlalchemy import select
-from temporalio.client import Client, WorkflowExecutionStatus
-from temporalio.contrib.pydantic import pydantic_data_converter
 from tests.cat_cafe import BRIEF
 
 # A worker pick-up plus one write takes well under a second; a worker restart a few seconds. Longer means the

@@ -9,11 +9,12 @@ were saved even when two steps run at once.
 
 import uuid
 
-from db.engine import engine
-from db.models import Run, RunEvent
 from sqlalchemy import func, insert, select, update
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
+
+from db.engine import engine
+from db.models import Run, RunEvent
 from workflows.run import RecordInput
 
 
