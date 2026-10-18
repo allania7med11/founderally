@@ -5,6 +5,7 @@ One object, read once at start. A missing variable fails here, not on first use.
 
 from functools import lru_cache
 from typing import Literal
+import os
 
 from pydantic_settings import BaseSettings
 
