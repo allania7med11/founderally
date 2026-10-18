@@ -1,7 +1,7 @@
 API_HEALTH = http://localhost:8000/api/health
 TEMPORAL_UI = http://localhost:8080
 
-.PHONY: up migrate makemigrations check-migrations down test test-stack
+.PHONY: up migrate makemigrations check-migrations down test test-stack lint
 
 up:
 	docker compose up -d --build
@@ -26,6 +26,10 @@ down:
 
 test:
 	cd backend && uv run pytest -m "not stack"
+
+# The same hooks as on commit, on every file; CI runs this too.
+lint:
+	uvx pre-commit run --all-files --show-diff-on-failure
 
 # Models and database agree, and the last migration goes down and up again.
 check-migrations:
