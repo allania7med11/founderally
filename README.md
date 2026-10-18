@@ -111,10 +111,10 @@ preview, so it is pinned and hand-written wrappers are the fallback.
 
 Docker and [uv](https://docs.astral.sh/uv/) installed, and a `.env` file at the repo root with the researcher's two
 keys, `TAVILY_API_KEY` ([Tavily](https://tavily.com)) and `OPENAI_API_KEY`; every other setting has a local default
-(`.env.example` lists them all). Once per clone, `uvx pre-commit install` runs the lint checks on every commit.
-Then from the repo root:
+(`.env.example` lists them all). Then from the repo root:
 
 ```
+make hooks            # once per clone: the lint checks run on every commit
 make up               # Postgres, Temporal, the API on :8000, the Temporal UI on :8080, two workers
 make migrate          # the tables
 make test             # fast tests, no stack, no keys

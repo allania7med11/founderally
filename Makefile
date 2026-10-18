@@ -1,7 +1,7 @@
 API_HEALTH = http://localhost:8000/api/health
 TEMPORAL_UI = http://localhost:8080
 
-.PHONY: up migrate makemigrations check-migrations down test test-stack lint
+.PHONY: up migrate makemigrations check-migrations down test test-stack hooks lint
 
 up:
 	docker compose up -d --build
@@ -26,6 +26,10 @@ down:
 
 test:
 	cd backend && uv run pytest -m "not stack"
+
+# Once per clone: the lint hooks then run on every commit.
+hooks:
+	uvx pre-commit install
 
 # The same hooks as on commit, on every file; CI runs this too.
 lint:
