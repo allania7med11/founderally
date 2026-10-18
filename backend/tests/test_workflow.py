@@ -50,10 +50,13 @@ def fake_research_graph(node) -> StateGraph:
 
 async def test_run_pauses_at_review_and_resumes_on_decide() -> None:
     writes: list[RecordInput] = []
+    at_review = asyncio.Event()
 
     @activity.defn(name="record")
     async def fake_record(write: RecordInput) -> int:
         writes.append(write)
+        if len(writes) == 4:
+            at_review.set()
         return len(writes)
 
     research_graph = fake_research_graph(three_rows)
@@ -65,8 +68,7 @@ async def test_run_pauses_at_review_and_resumes_on_decide() -> None:
             handle = await env.client.start_workflow(
                 RunWorkflow.run, RunInput(run_id="r1", tenant_id="t1", brief=BRIEF), id="r1", task_queue=TASK_QUEUE
             )
-            while len(writes) < 4:
-                await asyncio.sleep(0.05)
+            await at_review.wait()
             assert [w.run_status for w in writes] == ["running", "running", "running", "awaiting_review"]
 
             await handle.signal(RunWorkflow.decide, "approve")
@@ -87,10 +89,13 @@ async def test_too_few_rows_runs_a_second_pass() -> None:
     """Pass 1 keeps one competitor, under the three the workflow wants, so it runs pass 2, which keeps four. The run
     reports four: only pass 2 returns that number, so the text proves pass 2 ran."""
     writes: list[RecordInput] = []
+    at_review = asyncio.Event()
 
     @activity.defn(name="record")
     async def fake_record(write: RecordInput) -> int:
         writes.append(write)
+        if len(writes) == 4:
+            at_review.set()
         return len(writes)
 
     research_graph = fake_research_graph(one_then_four_rows)
@@ -102,8 +107,7 @@ async def test_too_few_rows_runs_a_second_pass() -> None:
             handle = await env.client.start_workflow(
                 RunWorkflow.run, RunInput(run_id="r2", tenant_id="t1", brief=BRIEF), id="r2", task_queue=TASK_QUEUE
             )
-            while len(writes) < 4:
-                await asyncio.sleep(0.05)
+            await at_review.wait()
             # Close the run, so the worker does not stop under a workflow still waiting at review.
             await handle.signal(RunWorkflow.decide, "discard")
             await handle.result()
@@ -114,10 +118,13 @@ async def test_too_few_rows_runs_a_second_pass() -> None:
 async def test_first_valid_decision_wins() -> None:
     """A typo, then "approve", then "discard": the typo is ignored and "approve" stands, so the run is saved."""
     writes: list[RecordInput] = []
+    at_review = asyncio.Event()
 
     @activity.defn(name="record")
     async def fake_record(write: RecordInput) -> int:
         writes.append(write)
+        if len(writes) == 4:
+            at_review.set()
         return len(writes)
 
     research_graph = fake_research_graph(three_rows)
@@ -129,8 +136,7 @@ async def test_first_valid_decision_wins() -> None:
             handle = await env.client.start_workflow(
                 RunWorkflow.run, RunInput(run_id="r3", tenant_id="t1", brief=BRIEF), id="r3", task_queue=TASK_QUEUE
             )
-            while len(writes) < 4:
-                await asyncio.sleep(0.05)
+            await at_review.wait()
             await handle.signal(RunWorkflow.decide, "aprove")
             await handle.signal(RunWorkflow.decide, "approve")
             await handle.signal(RunWorkflow.decide, "discard")

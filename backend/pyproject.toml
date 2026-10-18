@@ -37,6 +37,10 @@ select = ["E", "F", "W", "I", "ASYNC", "T10"]
 [tool.ruff.lint.isort]
 known-first-party = ["activities", "api", "contracts", "db", "settings", "tests", "worker", "workflows"]
 
+[tool.ruff.lint.per-file-ignores]
+# the stack tests poll Postgres for rows another process writes, where no asyncio.Event can reach
+"tests/stack/**" = ["ASYNC110"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"
