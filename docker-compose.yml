@@ -12,6 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/litellm.sql:/docker-entrypoint-initdb.d/litellm.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-founderally}"]
       interval: 2s
@@ -44,6 +45,28 @@ services:
     depends_on:
       - temporal
 
+  litellm:
+    # The LLM gateway: every model call passes it. It holds the OpenAI key, logs each call's tokens, seconds and cost,
+    # and refuses calls over the daily budget.
+    image: ghcr.io/berriai/litellm:v1.106.0@sha256:2e4c0371f3a8c28e4da131d77abaa8341cd3b0c2fcc4d34d7c5900431af7b9d0
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-founderally}:${POSTGRES_PASSWORD:-founderally}@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-master}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./docker/litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: &backend-build
       context: .
@@ -72,16 +95,24 @@ services:
     restart: on-failure
 
   worker-a:
-    # Same image; runs A's three nodes on queue `a`, the only worker with the Tavily and OpenAI keys.
+    # Same image; runs A's three nodes on queue `a`, the only worker with the Tavily key. Its model calls go through
+    # the gateway with its own key, limited to its model; the OpenAI key stays with the gateway.
     build: *backend-build
     command: ["python", "-m", "worker.main"]
     environment:
       <<: *backend-env
       QUEUE: a
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${LITELLM_WORKER_KEY:-}
+      OPENAI_BASE_URL: http://litellm:4000
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
-    depends_on: *backend-deps
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      litellm:
+        condition: service_healthy
     # Five tries cover Temporal's slow start; a missing key fails every try, so it stops with the error in its logs.
     restart: on-failure:5
 

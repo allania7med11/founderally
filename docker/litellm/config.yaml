@@ -1,0 +1,15 @@
+# The LLM gateway's settings. The keys come from the environment; nothing secret is in this file.
+model_list:
+  - model_name: gpt-6-luna
+    litellm_params:
+      model: openai/gpt-6-luna
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  # The OpenAI client in the worker retries; a second layer here would multiply the tries.
+  num_retries: 0
+
+litellm_settings:
+  # A backstop against a bug in our code: over $5 a day every model call is refused.
+  max_budget: 5
+  budget_duration: 1d

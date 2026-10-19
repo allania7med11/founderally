@@ -1,7 +1,7 @@
 API_HEALTH = http://localhost:8000/api/health
 TEMPORAL_UI = http://localhost:8080
 
-.PHONY: up migrate makemigrations check-migrations down test test-stack hooks lint
+.PHONY: up migrate makemigrations check-migrations down test test-stack hooks lint gateway-key gateway-key-delete
 
 up:
 	docker compose up -d --build
@@ -26,6 +26,21 @@ down:
 
 test:
 	cd backend && uv run pytest -m "not stack"
+
+# Once per clone, after `make up`: the app's one key to the gateway. Put the printed line in .env, then `make up`
+# again.
+gateway-key:
+	@curl -fsS -X POST http://localhost:4000/key/generate \
+	  -H "Authorization: Bearer $${LITELLM_MASTER_KEY:-sk-local-master}" -H "Content-Type: application/json" \
+	  -d '{"key_alias": "founderally"}' \
+	  | sed -n 's/.*"key":"\([^"]*\)".*/LITELLM_WORKER_KEY=\1/p'
+
+# The key was lost or leaked: delete it, then `make gateway-key` for a new one.
+gateway-key-delete:
+	@curl -fsS -X POST http://localhost:4000/key/delete \
+	  -H "Authorization: Bearer $${LITELLM_MASTER_KEY:-sk-local-master}" -H "Content-Type: application/json" \
+	  -d '{"key_aliases": ["founderally"]}'
+	@echo
 
 # Once per clone: the lint hooks then run on every commit.
 hooks:
